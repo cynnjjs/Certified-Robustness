@@ -16,7 +16,7 @@ import json
 # dataset 
 from utils.load_mnist import load_mnist
 # training 
-from train.train_clean_class_per import train
+from train.train_clean_test_per import train
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'mnist', 'dataset')

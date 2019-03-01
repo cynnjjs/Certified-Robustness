@@ -26,17 +26,19 @@ Takes as input
 5. args["gd_learning_rate"]
 """
 
-def train_so_pgd (x, y_, grad_fx, psd_M, delta, FLAGS):
+def train_so_pgd (x, y_, grad_fx, psd_M, FLAGS):
     # grad_fx: ? * 784
     # x, per: ? i * 784 j
     # PSD_M: ? i * 784 j * 784 k
-    per = tf.random_uniform(tf.shape(x), minval = -1*delta, maxval = delta)
-  
+    per = tf.zeros_like(x)
+    #per = tf.random_uniform(tf.shape(x), minval = -1*delta, maxval = delta)
+    
     # Computing the gradient and updating
     for i in range(0, FLAGS.num_gd_iter):
         # loss: ?
-        loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx, per), 1),
-            tf.einsum('ij,ijk,ik->i', per, psd_M, per))
+        ##loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx, per), 1), tf.einsum('ij,ijk,ik->i', per, psd_M, per))
+            
+        loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx, per), 1), tf.einsum('ij,ijk,ik->i', per, psd_M, per))
 
         grad, = tf.gradients(-loss, per);
 
@@ -44,10 +46,9 @@ def train_so_pgd (x, y_, grad_fx, psd_M, delta, FLAGS):
         scaled_signed_grad = FLAGS.gd_learning_rate * signed_grad
   
         per = per + scaled_signed_grad
-        per = project(per, delta)
+        per = project(per, FLAGS.train_epsilon)
   
-    loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx, per), 1),
-                tf.einsum('ij,ijk,ik->i', per, psd_M, per))
+  #loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx, per), 1), tf.einsum('ij,ijk,ik->i', per, psd_M, per))
                 
-    return per, loss
+    return tf.stop_gradient(per)
     

@@ -22,7 +22,7 @@ from utils.get_model import get_model
 
 ## GD attack
 from attacks.gd import gd, train_gd
-#from attacks.so_pgd import train_so_pgd
+from attacks.so_pgd import train_so_pgd
 
 # Calculate sigma' for softplus
 def sigma_prime (t, beta):
@@ -55,7 +55,7 @@ def get_classification_loss(x, y_, y_model, FLAGS):
 
 # Testing speed issue
 #def get_so_class_loss(x, y_, y_model, i,  grad_fx, grad_fx_label, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, w_i2, FLAGS):
-def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, FLAGS):
+def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, w_i2, FLAGS):
     
     # grad_fx: ? k * 10 j * 784 u
     # label: ?
@@ -84,20 +84,23 @@ def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, FLAGS):
     ## psd_M = tf.add(tf.einsum('ij,kmj->ikm', tf.multiply(sig_pri_2_max, a_pos_ij), w_i2), tf.einsum('ij,kmj->ikm', tf.multiply(sig_pri_2_min, a_neg_ij), w_i2))
     
     #psd_M = tf.einsum('ij,kmj->ikm', 6.25 * a_pos_ij, w_i2)
+    
     #psd_M = tf.expand_dims(6.25 * tf.reduce_sum(w_i2, axis = 2), axis = 0)
-    #psd_M = tf.tile(psd_M, [tf.size(label), 1, 1])
+    #psd_M = tf.tile(psd_M, [tf.shape(x)[0], 1, 1])
     
     # Get perturbation variable value
 
     #with tf.variable_scope("perturbation", reuse = True):
-    #    per = tf.get_variable("per")
+    #        per = tf.get_variable("per")
     
-    ## per_i = tf.gather_nd(per, indexed_i)
+    #    per_i = tf.gather_nd(per, indexed_i)
+    psd_M = tf.ones([tf.shape(x)[0], FLAGS.dimension, FLAGS.dimension])
+    
+    per_i = train_so_pgd(x, y_, grad_fx_ij, psd_M, FLAGS)
     # per_i: ? * 784
-    ## loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx_ij, per_i), 1), tf.einsum('ij,ijk,ik->i', per_i, psd_M, per_i))
+    loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx_ij, per_i), 1), tf.einsum('ij,ijk,ik->i', per_i, psd_M, per_i))
 
     # Test speed issue... ignoring so term
-    loss = tf.reduce_sum(grad_fx_ij, 1) * FLAGS.train_epsilon
     
     # per: ? * 10 * 784
     # loss: ?
@@ -130,7 +133,7 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
         
         # Preliminary work for Hessian term
         # Calculate W_j W_j^T
-        ## w_i2 = tf.einsum('ij,kj->ikj', w_fc1, w_fc1)
+        w_i2 = tf.einsum('ij,kj->ikj', w_fc1, w_fc1)
         # Calculate l1 norm of each row of W_1
         ## b_0 = tf.norm(w_fc1, ord = 1, axis = 0) * FLAGS.train_epsilon
        
@@ -194,7 +197,7 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
             # class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, w_i2, FLAGS)
             
             # Testing speed issue
-            class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, grad_fx_label, FLAGS)
+            class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, grad_fx_label, w_i2, FLAGS)
             class_loss = tf.reshape(class_loss, [tf.size(class_loss), 1])
             final_loss = tf.concat([final_loss, class_loss], 1)
             class_margin.append(class_loss)
