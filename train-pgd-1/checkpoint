@@ -1,2 +1,0 @@
-model_checkpoint_path: "pgd-weights"
-all_model_checkpoint_paths: "pgd-weights"
