@@ -10,7 +10,7 @@ from utils.get_model import get_model
 from bounds.bounds_sdp import get_pairwise_loss
 from bounds.bounds_spectral import bounds_spectral 
 from bounds.bounds_fro import bounds_fro
-from bounds.bounds_so import qp_feasibility, sdp_solver, eq_solver
+from bounds.bounds_so import qp_solver, qp_feasibility, sdp_solver, eq_solver
 
 """
 Computes the loss for each bound
@@ -24,9 +24,15 @@ Takes as input:
 def sigma_prime (t, beta):
     return beta / (1.0+np.exp(-beta*t))
 
-# Calculate sigma'' for softplus
-def sigma_prime_2 (t, beta):
-    return beta * beta * np.exp(beta*t) / ((1.0+np.exp(beta*t))**2)
+# Calculate gradient at x
+def grad_2 (x, a, beta):
+    return (beta**2) * np.exp(-beta*(a+x)) / (x * (1.0 + np.exp(-beta*(a+x)))**2) - (sigma_prime(x+a, beta)-sigma_prime(a, beta)) / (x**2)
+
+# Hacky upper bound, x < 0
+def hacky_ub (x):
+    # For beta = 5 only
+    a, b, c, d, e = [1.27167784, -0.15555676, 0.46238266, 5.64449646, 1.55300805]
+    return a/(x*x-b*x+c) + d/(-x+e)
 
 def compute_logits (X_test, Y_test, FLAGS):
 ## Step 1: Define the model 
@@ -38,7 +44,6 @@ def compute_logits (X_test, Y_test, FLAGS):
         scope.reuse_variables()
         y_model = get_model(x, FLAGS)
 
-
     sess = tf.InteractiveSession()
     saver = tf.train.Saver()
     ## Restoring the weights and dual variables 
@@ -48,8 +53,6 @@ def compute_logits (X_test, Y_test, FLAGS):
     Logits, = sess.run([y_model], feed_dict={x:X_test})
 
     return Logits
-
-
 
 """
 Takes as input:
@@ -157,29 +160,19 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
         """
         # Second-order term
         # so_term = np.zeros(num_classes)
-        sig_pri_2_max = np.zeros(FLAGS.num_hidden)
-        sig_pri_2_min = np.zeros(FLAGS.num_hidden)
+        pre_act_neg = -np.abs(pre_act)
+        grad_b0 = np.sign(grad_2(b_0, pre_act_neg, beta)) # Indicator
+        grad_b0 = np.clip(grad_b0, 0, np.max(grad_b0))
+        
+        # sig_pri_2_max: FLAGS.num_hidden
 
-        # Max and min of integral of sigma''
-        for j in range(FLAGS.num_hidden):
-            eq_solution = eq_solver(pre_act[j], beta)
-            if (pre_act[j] < 0):
-                # Max go from pre_act to eq_solution[0][0] unless pre_act + b_0 < eq_solution[0][0]
-                if (pre_act[j] + b_0[j] < eq_solution[0][0]):
-                    sig_pri_2_max[j] = (sigma_prime(pre_act[j] + b_0[j], beta)-sigma_prime(pre_act[j], beta)) / b_0[j]
-                else:
-                    sig_pri_2_max[j] = - eq_solution[1]
-                # Min go from pre_act - b_0 to pre_act
-                sig_pri_2_min[j] = (sigma_prime(pre_act[j], beta)-sigma_prime(pre_act[j] - b_0[j], beta)) / b_0[j]
-            else:
-                # Max go from eq_solution[0][0] to pre_act unless pre_act - b_0 > eq_solution[0][0]
-                if (pre_act[j] - b_0[j] > eq_solution[0][0]):
-                    sig_pri_2_max[j] = (sigma_prime(pre_act[j], beta)-sigma_prime(pre_act[j] - b_0[j], beta)) / b_0[j]
-                else:
-                    sig_pri_2_max[j] = - eq_solution[1]
-                # Min go from pre_act to pre_act + b_0
-                sig_pri_2_min[j] = (sigma_prime(pre_act[j] + b_0[j], beta)-sigma_prime(pre_act[j], beta)) / b_0[j]
-                #print(pre_act[j], b_0[j], ': max, min = ', sig_pri_2_max[j], sig_pri_2_min[j])
+        # Max go from pre_act_neg to opt unless grad_b0 > 0
+        candidate_1 = (sigma_prime(pre_act_neg + b_0, beta) - sigma_prime(pre_act_neg, beta)) / b_0
+        candidate_2 = hacky_ub(pre_act_neg)
+        sig_pri_2_max = candidate_1 * grad_b0 + candidate_2 * (1 - grad_b0)
+        
+        # Min go from pre_act - b_0 to pre_act
+        sig_pri_2_min = (sigma_prime(pre_act_neg, beta) - sigma_prime(pre_act_neg - b_0, beta)) / b_0
 
         for k in range(num_classes):
             
@@ -206,7 +199,7 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     break
             """
             # CVXpy solver for QP feasibility
-            
+            """
             if (k != label):
                 print('Solving QP feasibility for Example', i, 'class', k)
                 sys.stdout.flush()
@@ -217,9 +210,9 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     # May not be the new max - just the first class that surpasses true label
                     New_labels[i] = k
                     break
-            
-            # CVXpy solver for QP
             """
+            # CVXpy solver for QP
+            
             if (k != label):
                 print('Solving QP - SDP relax for Example', i, 'class', k)
                 sys.stdout.flush()
@@ -232,7 +225,7 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     # May not be the new max - just the first class that surpasses true label
                     New_labels[i] = k
                     break
-            """
+            
             """
             new_val = Logits[i, k]-Logits[i, label] + grad_l1[k]*epsilon + so_term[k]*epsilon*epsilon*0.5
             print('Example',i, 'Class',k, Logits[i, k]-Logits[i, label], grad_l1[k]*epsilon, so_term[k]*epsilon*epsilon*0.5)
@@ -295,7 +288,6 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
             c = tf.get_variable("dual", dtype = tf.float32, initializer = init)
 
     tvars = tf.trainable_variables()
-    print(tvars)
     sess = tf.InteractiveSession()
     saver = tf.train.Saver()
     ## Restoring the weights

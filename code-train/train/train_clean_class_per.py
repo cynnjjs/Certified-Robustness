@@ -326,7 +326,7 @@ def train(X_train, Y_train, X_test, Y_test, FLAGS):
                 start = i * FLAGS.batch_size
                 end = (i+1) * FLAGS.batch_size
                 
-                if i % 100 == 0:
+                if i % 50 == 0:
                     Test_accuracy = accuracy.eval(feed_dict={
                         x: X_test, y_: Y_test})
 

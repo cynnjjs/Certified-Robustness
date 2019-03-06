@@ -55,7 +55,7 @@ def get_classification_loss(x, y_, y_model, FLAGS):
 
 # Testing speed issue
 #def get_so_class_loss(x, y_, y_model, i,  grad_fx, grad_fx_label, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, w_i2, FLAGS):
-def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, w_i2, FLAGS):
+def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, label, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, FLAGS):
     
     # grad_fx: ? k * 10 j * 784 u
     # label: ?
@@ -73,20 +73,16 @@ def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, w_i2, FLAGS):
     # grad_fx_ij: ? * 784
     # sig_pri_2_max: ? i * 500 j
     # a_pos_ij: ? i * 500 j
-    """
+    
     indexed_ij = tf.concat([i_exp, label], 1)
     a_pos_ij = tf.gather_nd(a_pos, indexed_ij)
     a_neg_ij = tf.gather_nd(a_neg, indexed_ij)
-    """
+    
+    a_sig = tf.add(tf.multiply(sig_pri_2_max, a_pos_ij), tf.multiply(sig_pri_2_min, a_neg_ij))
+    
     # w_i2: 784 k * 784 m * 500 j
     
     # Compute PSD_M: ? i * 784 k * 784 m
-    ## psd_M = tf.add(tf.einsum('ij,kmj->ikm', tf.multiply(sig_pri_2_max, a_pos_ij), w_i2), tf.einsum('ij,kmj->ikm', tf.multiply(sig_pri_2_min, a_neg_ij), w_i2))
-    
-    #psd_M = tf.einsum('ij,kmj->ikm', 6.25 * a_pos_ij, w_i2)
-    
-    #psd_M = tf.expand_dims(6.25 * tf.reduce_sum(w_i2, axis = 2), axis = 0)
-    #psd_M = tf.tile(psd_M, [tf.shape(x)[0], 1, 1])
     
     # Get perturbation variable value
 
@@ -94,14 +90,17 @@ def get_so_class_loss(x, y_, y_model, i, grad_fx, grad_fx_label, w_i2, FLAGS):
     #        per = tf.get_variable("per")
     
     #    per_i = tf.gather_nd(per, indexed_i)
-    psd_M = tf.ones([tf.shape(x)[0], FLAGS.dimension, FLAGS.dimension])
+    with tf.variable_scope("model_weights", reuse = True):
+        w_fc1  = tf.get_variable("W_fc1")
     
-    per_i = train_so_pgd(x, y_, grad_fx_ij, psd_M, FLAGS)
+    per_i = train_so_pgd(x, y_, grad_fx_ij, w_fc1, FLAGS)
+    
+    w_per = tf.matmul(per_i, w_fc1)
+    # w_fc1: 784 * 500
+    # w_per: ? * 500
+    loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx_ij, per_i), 1), tf.reduce_sum(tf.multiply(a_sig, tf.multiply(w_per, w_per)), 1))
+    
     # per_i: ? * 784
-    loss = tf.add(tf.reduce_sum(tf.multiply(grad_fx_ij, per_i), 1), tf.einsum('ij,ijk,ik->i', per_i, psd_M, per_i))
-
-    # Test speed issue... ignoring so term
-    
     # per: ? * 10 * 784
     # loss: ?
 
@@ -133,9 +132,9 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
         
         # Preliminary work for Hessian term
         # Calculate W_j W_j^T
-        w_i2 = tf.einsum('ij,kj->ikj', w_fc1, w_fc1)
+        # w_i2 = tf.einsum('ij,kj->ikj', w_fc1, w_fc1)
         # Calculate l1 norm of each row of W_1
-        ## b_0 = tf.norm(w_fc1, ord = 1, axis = 0) * FLAGS.train_epsilon
+        b_0 = tf.norm(w_fc1, ord = 1, axis = 0) * FLAGS.train_epsilon
        
         # Compute gradient of f(x)
         # x: ? * 784
@@ -161,7 +160,6 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
         indexed_label = tf.concat([indexed, label], 1)
         grad_fx_label = tf.gather_nd(grad_fx, indexed_label)
 
-        """
         pre_act_neg = -tf.abs(pre_act)
         
         # Max and min of integral of sigma''
@@ -177,17 +175,17 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
         sig_pri_2_min = (sigma_prime(pre_act_neg, beta) - sigma_prime(pre_act_neg - b_0, beta)) / b_0
         
         temp_a = tf.zeros([0, FLAGS.num_classes, FLAGS.num_hidden], dtype=tf.float32)
-        for label in range(FLAGS.num_classes):
+        for l in range(FLAGS.num_classes):
             temp_a_2 = tf.zeros([1, 0, FLAGS.num_hidden], dtype=tf.float32)
             for k in range(FLAGS.num_classes):
                 w_i = tf.slice(w_fc2, [0, k], [FLAGS.num_hidden, 1])
-                w_j = tf.slice(w_fc2, [0, label], [FLAGS.num_hidden, 1])
+                w_j = tf.slice(w_fc2, [0, l], [FLAGS.num_hidden, 1])
                 temp_a_2 = tf.concat([temp_a_2, tf.expand_dims(tf.transpose(tf.subtract(w_i, w_j)), 0)], 1)
             temp_a = tf.concat([temp_a, temp_a_2], 0)
         # 10 * 10 * 500
         a_pos = tf.nn.relu(temp_a)
         a_neg = -tf.nn.relu(-temp_a)
-        """
+
         final_loss = tf.zeros([tf.shape(x)[0], 0])
         class_margin = []
 
@@ -197,7 +195,7 @@ def get_regularization_loss(x, y_, y_model, FLAGS):
             # class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, w_i2, FLAGS)
             
             # Testing speed issue
-            class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, grad_fx_label, w_i2, FLAGS)
+            class_loss = get_so_class_loss(x, y_, y_model, r, grad_fx, grad_fx_label, label, a_pos, a_neg, sig_pri_2_max, sig_pri_2_min, FLAGS)
             class_loss = tf.reshape(class_loss, [tf.size(class_loss), 1])
             final_loss = tf.concat([final_loss, class_loss], 1)
             class_margin.append(class_loss)
@@ -231,12 +229,13 @@ def train(X_train, Y_train, X_test, Y_test, FLAGS):
         y_model = get_model(x, FLAGS)
         scope.reuse_variables()
 
-    # Defining all possible variables that could be used while training 
+    # Defining all possible variables that could be used while training
+    """
     with tf.variable_scope("perturbation") as scope:
         per = tf.get_variable("per", shape = [FLAGS.batch_size, FLAGS.num_classes,  FLAGS.dimension], initializer = tf.zeros_initializer())
         # per: 100 * 10 * 784
         scope.reuse_variables()
-         
+    """
     ## Call appropriate loss function based on regularization 
 
     config=tf.ConfigProto(allow_soft_placement=True)
@@ -329,11 +328,11 @@ def train(X_train, Y_train, X_test, Y_test, FLAGS):
                 start = i * FLAGS.batch_size
                 end = (i+1) * FLAGS.batch_size
                 
-                if i % 100 == 0:
+                if i % 40 == 0:
                     Test_accuracy = accuracy.eval(feed_dict={
                         x: X_test, y_: Y_test})
 
-                    if(FLAGS.reg_type != 'None' and FLAGS.reg_param!=0):
+                    if (FLAGS.reg_type != 'None' and FLAGS.reg_param!=0):
                         
                         Train_loss = train_loss.eval(feed_dict={x:X_train[0:FLAGS.batch_size, :], y_:Y_train[0:FLAGS.batch_size, :]})
                         Classification_loss = classification_loss.eval(feed_dict={x:X_train[0:FLAGS.batch_size, :], y_:Y_train[0:FLAGS.batch_size, :]})
@@ -360,7 +359,12 @@ def train(X_train, Y_train, X_test, Y_test, FLAGS):
 
                     else : 
                         print('step %d, test accuracy %g' % (i, Test_accuracy))
+                    
                     # Saving all the variables here (weight + dual)
+                    saver1 = tf.train.Saver(var_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='model_weights'))
+                    weights_path = FLAGS.msave + "-epoch" + str(j) + "-step" + str(i)+ "-weights"
+                    save_path = saver1.save(sess, weights_path)
+                    print("Epoch", j, "step", i, "Weights saved in file: %s" % save_path)
                 
                 if (FLAGS.reg_type == 'so_pgd'):
                     """

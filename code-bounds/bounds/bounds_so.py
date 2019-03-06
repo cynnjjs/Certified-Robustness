@@ -31,7 +31,7 @@ def sdp_feasibility(A, dim, val):
     problem.solve()
     return problem.status
 
-def qp_solver(A, dim, delta, c):
+def qp_solver_sqrt(A, dim, delta, c):
     Y = cp.Variable((dim,dim), PSD=True)
     c = np.array([c])
     obj = cp.Maximize(0.5 * cp.sum(cp.multiply(A,Y)) + cp.sqrt(cp.sum(cp.multiply(cp.matmul(c.T,c),Y))))
@@ -42,7 +42,22 @@ def qp_solver(A, dim, delta, c):
     #print("Y*: ", Y.value)
     return np.sqrt(np.sum(np.multiply(np.matmul(c.T,c),Y.value))), 0.5 * np.sum(np.multiply(A,Y.value))
 
-def qp_feasibility(A, dim, delta, c, val):
+def qp_solver(A, dim, delta, c):
+    Y = cp.Variable((dim + 1, dim + 1), PSD=True)
+    c = np.array([c])
+    A1 = np.concatenate((np.multiply(0.5, A), c.T), axis = 1)
+    A1 = np.concatenate((A1, np.zeros((1, dim + 1))), axis = 0)
+    obj = cp.Maximize(cp.sum(cp.multiply(A1, Y)))
+    constraints = [cp.diag(Y) <= np.append(np.ones(dim) * delta * delta, [1]),
+                   cp.abs(Y[dim, 0:dim]) <= delta]
+    problem = cp.Problem(obj, constraints)
+    problem.solve(verbose=True)
+    print("qp - SDP relax Optimal value: ", problem.value)
+    #print("Y*: ", Y.value)
+    fo_term = np.sum(np.multiply(c, Y.value[dim, 0:dim]))
+    return fo_term, problem.value - fo_term
+
+def qp_feasibility_sqrt(A, dim, delta, c, val):
     Y = cp.Variable((dim,dim), PSD=True)
     c = np.array([c])
     obj = cp.Maximize(0)
@@ -52,6 +67,19 @@ def qp_feasibility(A, dim, delta, c, val):
     problem.solve()
     #print("qp Optimal value: ", problem.value)
     #print("Y*: ", Y.value)
+    return problem.status
+
+def qp_feasibility(A, dim, delta, c, val):
+    Y = cp.Variable((dim + 1, dim + 1), PSD=True)
+    c = np.array([c])
+    A1 = np.concatenate((np.multiply(0.5, A), c.T), axis = 1)
+    A1 = np.concatenate((A1, np.zeros((1, dim + 1))), axis = 0)
+    obj = cp.Maximize(0)
+    constraints = [cp.diag(Y) <= np.append(np.ones(dim) * delta * delta, [1]),
+                   cp.abs(Y[dim, 0:dim]) <= delta,
+                   cp.sum(cp.multiply(A1, Y)) >= val]
+    problem = cp.Problem(obj, constraints)
+    problem.solve()
     return problem.status
 
 def cal_dual_opt(psd_M, dim):
@@ -82,13 +110,12 @@ A = np.random.rand(200,200)
 print(sdp_solver(A,200))
 print(cal_dual_opt(A,200))
 """
-"""
 A = [[2, -1, 0],
      [-1, 2, -1],
      [0, -1, 2]]
 b = [1,1,1]
 
-print(qp_solver(A, 3, 0.1, b))
+print(qp_feasibility(A, 3, 0.1, b, 0.2))
 
 """
 N = 1000
@@ -122,4 +149,4 @@ print(coeffs)
 plt.plot(x, y_corrected-y, label='fit_curve')
 plt.legend(loc='upper left')
 plt.show()
-
+"""

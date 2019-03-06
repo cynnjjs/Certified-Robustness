@@ -22,19 +22,17 @@ def two_layer(x, FLAGS):
 
     x_ravel = tf.reshape(x, [-1, FLAGS.dimension])
     # First fully connected layer 
-    W_fc1 = weight_variable("W_fc1", [FLAGS.dimension, FLAGS.num_hidden])
-    b_fc1 = bias_variable("b_fc1", [FLAGS.num_hidden])
+    W_fc1 = tf.get_variable("W_fc1",   initializer = tf.truncated_normal([FLAGS.dimension, FLAGS.num_hidden], stddev = 0.1))
+    b_fc1 = tf.get_variable("b_fc1", initializer=tf.zeros([FLAGS.num_hidden]))
     # ReLU activation
     # Second layer
-    W = tf.get_variable("W_fc2",   initializer = tf.truncated_normal([FLAGS.num_hidden, FLAGS.num_classes], stddev = 0.1))
-    b = tf.get_variable("b_fc2", initializer=tf.zeros([FLAGS.num_classes]))
+    W_fc2 = tf.get_variable("W_fc2",   initializer = tf.truncated_normal([FLAGS.num_hidden, FLAGS.num_classes], stddev = 0.1))
+    b_fc2 = tf.get_variable("b_fc2", initializer=tf.zeros([FLAGS.num_classes]))
     
     # Here the magic happens
-    beta = 20.0
-    h_fc1 = tf.nn.softplus(beta * (tf.matmul(x_ravel, W_fc1) + b_fc1))
-    #h_fc1 = tf.nn.relu(tf.matmul(x_ravel, W_fc1) + b_fc1)
-    
-    y = tf.matmul(h_fc1, W) + b
+    beta = 5.0
+    h_fc1 = tf.nn.softplus(tf.scalar_mul(beta, tf.matmul(x_ravel, W_fc1) + b_fc1))
+    y = tf.matmul(h_fc1, W_fc2) + b_fc2
     return y
 
 
