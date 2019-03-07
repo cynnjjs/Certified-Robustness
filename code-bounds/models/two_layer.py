@@ -22,12 +22,13 @@ def two_layer(x, FLAGS):
 
     x_ravel = tf.reshape(x, [-1, FLAGS.dimension])
     # First fully connected layer
-    """
+    
     W_fc1 = tf.get_variable("W_fc1",   initializer = tf.truncated_normal([FLAGS.dimension, FLAGS.num_hidden], stddev = 0.1))
     b_fc1 = tf.get_variable("b_fc1", initializer=tf.zeros([FLAGS.num_hidden]))
     """
     W_fc1 = weight_variable("W_fc1", [FLAGS.dimension, FLAGS.num_hidden])
     b_fc1 = bias_variable("b_fc1", [FLAGS.num_hidden])
+    """
     # ReLU activation
     # Second layer
     W_fc2 = tf.get_variable("W_fc2",   initializer = tf.truncated_normal([FLAGS.num_hidden, FLAGS.num_classes], stddev = 0.1))
