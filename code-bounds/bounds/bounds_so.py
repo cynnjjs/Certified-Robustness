@@ -37,7 +37,7 @@ def qp_solver_sqrt(A, dim, delta, c):
     obj = cp.Maximize(0.5 * cp.sum(cp.multiply(A,Y)) + cp.sqrt(cp.sum(cp.multiply(cp.matmul(c.T,c),Y))))
     constraints = [cp.diag(Y) <= np.ones(dim) * delta * delta]
     problem = cp.Problem(obj, constraints)
-    problem.solve(verbose=True)
+    problem.solve("SCS", gpu=True, verbose=True)
     print("qp - SDP relax Optimal value: ", problem.value)
     #print("Y*: ", Y.value)
     return np.sqrt(np.sum(np.multiply(np.matmul(c.T,c),Y.value))), 0.5 * np.sum(np.multiply(A,Y.value))
@@ -51,7 +51,7 @@ def qp_solver(A, dim, delta, c):
     constraints = [cp.diag(Y) <= np.append(np.ones(dim) * delta * delta, [1]),
                    cp.abs(Y[dim, 0:dim]) <= delta]
     problem = cp.Problem(obj, constraints)
-    problem.solve(verbose=True)
+    problem.solve("SCS", gpu=True, verbose=True)
     print("qp - SDP relax Optimal value: ", problem.value)
     #print("Y*: ", Y.value)
     fo_term = np.sum(np.multiply(c, Y.value[dim, 0:dim]))
@@ -64,7 +64,7 @@ def qp_feasibility_sqrt(A, dim, delta, c, val):
     constraints = [cp.diag(Y) <= np.ones(dim) * delta * delta,
                    0.5 * cp.sum(cp.multiply(A,Y)) + cp.sqrt(cp.sum(cp.multiply(cp.matmul(c.T,c),Y))) >= val]
     problem = cp.Problem(obj, constraints)
-    problem.solve()
+    problem.solve("SCS", gpu=True)
     #print("qp Optimal value: ", problem.value)
     #print("Y*: ", Y.value)
     return problem.status
@@ -79,7 +79,7 @@ def qp_feasibility(A, dim, delta, c, val):
                    cp.abs(Y[dim, 0:dim]) <= delta,
                    cp.sum(cp.multiply(A1, Y)) >= val]
     problem = cp.Problem(obj, constraints)
-    problem.solve()
+    problem.solve("SCS", gpu=True)
     return problem.status
 
 def cal_dual_opt(psd_M, dim):
