@@ -10,7 +10,7 @@ from utils.load_mnist import load_mnist
 
 # bounds 
 from bounds.bounds_main import bounds_main
-from bounds.bounds_main_finer import bounds_main_finer
+from bounds.bounds_main_third import bounds_main_finer
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'mnist', 'dataset')

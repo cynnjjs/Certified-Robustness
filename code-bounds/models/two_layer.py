@@ -28,6 +28,7 @@ def two_layer(x, FLAGS):
     """
     W_fc1 = weight_variable("W_fc1", [FLAGS.dimension, FLAGS.num_hidden])
     b_fc1 = bias_variable("b_fc1", [FLAGS.num_hidden])
+    
     # ReLU activation
     # Second layer
     W_fc2 = tf.get_variable("W_fc2",   initializer = tf.truncated_normal([FLAGS.num_hidden, FLAGS.num_classes], stddev = 0.1))

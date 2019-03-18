@@ -33,7 +33,7 @@ def hacky_ub (x):
     # For beta = 5 only
     a, b, c, d, e = [1.27167784, -0.15555676, 0.46238266, 5.64449646, 1.55300805]
     return a/(x*x-b*x+c) + d/(-x+e)
-
+"""
 def compute_logits (X_test, Y_test, FLAGS):
 ## Step 1: Define the model 
 ## Step 2: Load the weights
@@ -45,15 +45,15 @@ def compute_logits (X_test, Y_test, FLAGS):
         y_model = get_model(x, FLAGS)
 
     sess = tf.InteractiveSession()
-    saver = tf.train.Saver()
+    #saver = tf.train.Saver()
     ## Restoring the weights and dual variables 
-    saver.restore(sess, FLAGS.msave + "-final")
+    #    saver.restore(sess, FLAGS.msave + "-final")
 
     ## Running the graph 
     Logits, = sess.run([y_model], feed_dict={x:X_test})
-
+    
     return Logits
-
+"""
 """
 Takes as input:
  1. Logits
@@ -133,13 +133,12 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
 
     for i in range(num_points):
         # get test data x
-        x_ravel = tf.reshape(X_test[i, :], [-1, FLAGS.dimension])
-        pre_act = np.ravel((tf.matmul(x_ravel, W_FC1) + B_FC1).eval())
+        x_ravel = tf.reshape(X_test[i, :], [-1, FLAGS.dimension]).eval()
+        pre_act = np.ravel(np.matmul(x_ravel, W_FC1) + B_FC1)
         
         # Compute gradient of f(x)
-        sigma_p = beta * tf.nn.sigmoid(beta * pre_act)
-        sigma_p_ravel = tf.reshape(sigma_p, [-1]).eval()
-
+        sigma_p = beta / (1.0 + np.exp(-beta * pre_act))
+        
         # Gradient of ReLU below in comparison
         """
         sigma_prime_ravel = np.zeros(FLAGS.num_hidden, dtype=np.float32)
@@ -147,7 +146,7 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
             if pre_act[j] > 0:
                 sigma_prime_ravel[j] = 1.0
         """
-        grad_fx = tf.matmul(tf.matmul(W_FC2, np.diag(sigma_p_ravel)),np.transpose(W_FC1)).eval()
+        grad_fx = np.matmul(np.matmul(W_FC2, np.diag(sigma_p)),np.transpose(W_FC1))
         
         ## Compute the label
         label = np.argmax(Y_test[i, :])
@@ -199,7 +198,7 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     break
             """
             # CVXpy solver for QP feasibility
-            """
+            
             if (k != label):
                 print('Solving QP feasibility for Example', i, 'class', k)
                 sys.stdout.flush()
@@ -210,9 +209,9 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     # May not be the new max - just the first class that surpasses true label
                     New_labels[i] = k
                     break
-            """
-            # CVXpy solver for QP
             
+            # CVXpy solver for QP
+            """
             if (k != label):
                 print('Solving QP - SDP relax for Example', i, 'class', k)
                 sys.stdout.flush()
@@ -225,7 +224,7 @@ def compute_loss_so(model_weights, X_test, Y_test, Logits, epsilon, FLAGS):
                     # May not be the new max - just the first class that surpasses true label
                     New_labels[i] = k
                     break
-            
+            """
             """
             new_val = Logits[i, k]-Logits[i, label] + grad_l1[k]*epsilon + so_term[k]*epsilon*epsilon*0.5
             print('Example',i, 'Class',k, Logits[i, k]-Logits[i, label], grad_l1[k]*epsilon, so_term[k]*epsilon*epsilon*0.5)
@@ -291,7 +290,6 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
     sess = tf.InteractiveSession()
     saver = tf.train.Saver()
     ## Restoring the weights
-    
 
     saver.restore(sess, FLAGS.msave + "-final")
     
@@ -302,9 +300,14 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
     W_fc1 = w_fc1.eval()
     B_fc1 = b_fc1.eval()
     W_fc2 = w_fc2.eval()
-    B_fc2 = b_fc2.eval()        
-
-
+    B_fc2 = b_fc2.eval()
+    #print(W_fc1[0, 1], B_fc1[5], W_fc2[3,7], B_fc2[3])
+    """
+    np.save('pgdBeta5_weights_W_fc1', W_fc1)
+    np.save('pgdBeta5_weights_B_fc1', B_fc1)
+    np.save('pgdBeta5_weights_W_fc2', W_fc2)
+    np.save('pgdBeta5_weights_B_fc2', B_fc2)
+    """
     # Checking if dual variables are present
     if(FLAGS.reg_type == "first_order"):
         c = tvars[4];
@@ -325,12 +328,18 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
     else:
         model_weights= {'W_FC1':(W_fc1), 'B_FC1':B_fc1, 'W_FC2':np.transpose(W_fc2), 'B_FC2':B_fc2}
     
-    
     Spectral_matrix = bounds_spectral(model_weights, FLAGS)
     Fro_matrix = bounds_fro(model_weights, FLAGS)
     
     ## Returns the logits as numpy files
-    Logits= compute_logits(X_test, Y_test, FLAGS)
+    # X_test: 10000 * 784
+    # W_fc1 B_fc1 W_fc2 B_fc2: ((784, 500), (500,), (500, 10), (10,))
+    pre_act = np.matmul(X_test, W_fc1) + np.reshape(B_fc1, (1, FLAGS.num_hidden))
+
+    beta = 5.0
+    h_fc1 = np.log(1.0 + np.exp(beta * pre_act))
+    Logits = np.matmul(h_fc1, W_fc2) + np.reshape(B_fc2, (1, FLAGS.num_classes))
+    #Logits= compute_logits(X_test, Y_test, FLAGS)
 
     # os.mkdir(FLAGS.results_dir)
 
@@ -364,4 +373,4 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
         np.save(os.path.join(FLAGS.results_dir, 'Fro-hinge-' + str(e)), Fro_loss_hinge)
         np.save(os.path.join(FLAGS.results_dir, 'Fro-new-labels' + str(e)), Fro_new_labels)
 """
-    
+    sess.close()

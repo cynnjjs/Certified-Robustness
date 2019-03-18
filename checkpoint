@@ -1,2 +1,0 @@
-model_checkpoint_path: "so_pgd-epoch1-step240-weights"
-all_model_checkpoint_paths: "so_pgd-epoch1-step240-weights"

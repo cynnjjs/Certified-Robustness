@@ -16,14 +16,15 @@ import json
 # dataset 
 from utils.load_mnist import load_mnist
 # training 
-from train.train_clean_Madry_only import train
+from train.train_clean_test_per import train
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'mnist', 'dataset')
 tf.app.flags.DEFINE_integer('num_classes', 2, 'number of classes')
 tf.app.flags.DEFINE_string('model', 'two_layer', 'model: two_layer or multi_layer')
 
-tf.app.flags.DEFINE_integer('num_hidden', 500, 'number of hidden nodes')
+tf.app.flags.DEFINE_integer('num_hidden', 500, 'number of hidden nodes at layer 1')
+tf.app.flags.DEFINE_integer('num_hidden2', 500, 'number of hidden nodes at layer 2')
 tf.app.flags.DEFINE_integer('dimension', 784, 'Dimension of the dataset')
 tf.app.flags.DEFINE_integer('num_layers', 2, 'number of layers in network')
 
