@@ -6,20 +6,9 @@ import sys
 
 from utils.get_model import get_model
 
-## Bounds
-from bounds.bounds_sdp import get_pairwise_loss
-from bounds.bounds_spectral import bounds_spectral 
-from bounds.bounds_fro import bounds_fro
-from bounds.bounds_so import qp_solver, qp_feasibility, sdp_solver, eq_solver
-
 """
-Computes the loss for each bound
-Takes as input: 
-1. X_test --> To compute the current function values 
-2. Y_test
-3. FLAGS for defining the model 
+    Compute the loss: y_ is true lable, y_model is model prediction
 """
-
 def get_classification_loss(x, y_, y_model, FLAGS):
     
     ## Classification loss part
@@ -35,6 +24,9 @@ def get_classification_loss(x, y_, y_model, FLAGS):
         softmax_loss = tf.nn.softmax_cross_entropy_with_logits(labels = y_, logits = y_model)
         return softmax_loss
 
+"""
+    Madry's PGD - projection step
+"""
 def project(x_t, x, epsilon):
     e = tf.ones(tf.shape(x), tf.float32)*epsilon
     proj_x = tf.minimum(x_t, tf.add(x, e))
@@ -42,15 +34,10 @@ def project(x_t, x, epsilon):
     return proj_x
 
 """
-    Takes as input
-    1. x: Input placeholder
-    2. y_: Labels placeholder (one hot)
-    3. args["model"]
-    4. args["num_gd_iter"]
-    5. args["gd_learning_rate"]
-    """
+    Madry's PGD - main
+"""
 def train_gd (x, y_, epsilon, FLAGS):
-    tf.set_random_seed(42)
+    
     per = tf.random_uniform(tf.shape(x), minval = -1*epsilon, maxval = epsilon)
     x_t = x + per
         
@@ -74,23 +61,21 @@ def train_gd (x, y_, epsilon, FLAGS):
     return x_t
 
 """ 
-Restore the weights, and then save the weights
-separately as a dictionary (two_layer)
-and call the appropriate two_layer bounds 
-Takes as input: 
-a. X_test 
-b. Y_test 
-c. args["fsave"] + weights that has the weights
-d. args["model"] : Model to build
-e. args["results_dir"]: Directory inside which to add the loss files 
-f. args["Epsilon"]: Range of epsilon to compute bounds over
+    Run PGD on test examples to get perturbed X.
+    Evaluate the relative magnitude of l(x+epsilon), l(x), delta(l) * eps, 0.5* eps^T hessian(l) * eps, and residual
 """
 
-def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
+def bounds_main_third(X_test, Y_test, Epsilon, FLAGS):
+    # Fix random seed for initial pgd perturbations
+    tf.set_random_seed(42)
     
+    # Placeholder for the actual test set
     x = tf.placeholder(tf.float32, [None, FLAGS.dimension])
+    # Placeholder for 1 test example, because tf.Hessians only calculates one x
     x_1 = tf.placeholder(tf.float32, [FLAGS.dimension])
+    # y_ are true labels of x
     y_ = tf.placeholder(tf.float32, [None, FLAGS.num_classes])
+    # y_1 is true label of x_1
     y_1 = tf.placeholder(tf.float32, [FLAGS.num_classes])
 
     with tf.variable_scope("model_weights") as scope:
@@ -112,36 +97,31 @@ def bounds_main_finer(X_test, Y_test, Epsilon, FLAGS):
     b_fc1 = tvars[1]
     w_fc2 = tvars[2]
     b_fc2 = tvars[3]
-    print(w_fc1.eval()[0,1])
-    
-    x_adv = train_gd(x, y_, FLAGS.train_epsilon, FLAGS)
-    with tf.variable_scope("model_weights") as scope:
-        scope.reuse_variables()
-        y_adv = get_model(x_adv, FLAGS)
 
+    x_adv = train_gd(x, y_, FLAGS.test_epsilon, FLAGS)
+    
+    # Clean classification loss for entire test set
     cla_loss = get_classification_loss(x, y_, y_model, FLAGS)
+    # Clean classification loss for 1 test example
     cla_1_loss = get_classification_loss(x_1, y_1, y_1_model, FLAGS)
-    adv_loss = tf.nn.softmax_cross_entropy_with_logits(labels = y_, logits = y_model)
-
-    X_adv = x_adv.eval(feed_dict={x: X_test, y_: Y_test}) - X_test
-    Y_adv = y_adv.eval()
-    Adv_loss = adv_loss.eval(feed_dict={y_: Y_test, y_model: })
-
     grad_x = tf.gradients(cla_loss, [x])
-
-    num_points = np.shape(Y_test)[0]
     hessian_1_x = tf.hessians(cla_1_loss, [x_1])
+
+    # Adversarial perturbation of entire test set
+    X_adv = x_adv.eval(feed_dict={x: X_test, y_: Y_test})
+    X_per = X_adv - X_test
     
-    l_x_adv = adv_loss.eval(feed_dict={x: X_test, y_: Y_test})
+    num_points = np.shape(Y_test)[0]
+
+    l_x_adv = cla_loss.eval(feed_dict={x: X_adv, y_: Y_test})
     l_x = cla_loss.eval(feed_dict={x: X_test, y_: Y_test})
     grad_x = sess.run(grad_x, feed_dict={x: X_test, y_: Y_test})[0]
-    print(len(l_x_adv), len(grad_x))
+
     for i in range(num_points):
         hes = sess.run(hessian_1_x, feed_dict={x_1: X_test[i], y_1: Y_test[i]})[0]
-        b = np.dot(grad_x[i], X_adv[i])
-        c = np.matmul(np.matmul(np.reshape(X_adv[i],[1, FLAGS.dimension]), np.reshape(hes,[FLAGS.dimension, FLAGS.dimension])), np.reshape(X_adv[i],[FLAGS.dimension, 1]))[0, 0]*0.5
+        b = np.dot(grad_x[i], X_per[i])
+        c = np.matmul(np.matmul(np.reshape(X_per[i],[1, FLAGS.dimension]), np.reshape(hes,[FLAGS.dimension, FLAGS.dimension])), np.reshape(X_per[i],[FLAGS.dimension, 1]))[0, 0]*0.5
         print(l_x_adv[i], l_x[i], b, c)
-
-        print(l_x_adv[i] - l_x[i] - b - c)
+        print('Residual:', l_x_adv[i] - l_x[i] - b - c)
 
     sess.close()

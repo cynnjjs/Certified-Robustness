@@ -9,8 +9,8 @@ import json
 from utils.load_mnist import load_mnist
 
 # bounds 
-from bounds.bounds_main import bounds_main
-from bounds.bounds_main_third import bounds_main_finer
+from bounds.bounds_main_finer import bounds_main_finer
+from bounds.bounds_main_third import bounds_main_third
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'mnist', 'dataset')
@@ -25,7 +25,11 @@ tf.app.flags.DEFINE_integer('num_layers', 2, 'number of layers in network')
 tf.app.flags.DEFINE_string('msave', 'weights/temp', 'path to save the model weights')
 tf.app.flags.DEFINE_string('results_dir', 'results/temp', 'directory to save the losses')
 
-tf.app.flags.DEFINE_string('reg_type', 'None', 'type of regularization: None, first_order, fro, spectral')
+tf.app.flags.DEFINE_string('reg_type', 'None', 'type of regularization: None, first_order, second_order, third_order, fro, spectral')
+
+# Specific for our second-order bound
+tf.app.flags.DEFINE_string('solver_type', 'feasibility', 'type of solver: feasibility, optimum')
+
 tf.app.flags.DEFINE_float('reg_param', 0.01, 'regularization parameter')
 tf.app.flags.DEFINE_integer('num_epochs', 50, 'number of epochs')
 tf.app.flags.DEFINE_integer('batch_size', 100, 'batch size')
@@ -80,23 +84,20 @@ todo: make changes to bounds/attacks to get min_epsilon
 
 def main(argv=None):
 
-
     if (FLAGS.dataset  == 'mnist'):
         FLAGS.dimension = 784
         X_train, Y_train, X_test, Y_test = load_mnist(FLAGS)
 
     else:
         print("Invalid dataset")
-            
 
-
-#Epsilon = np.linspace(0, 0.2, 10)
+    # Epsilon = np.linspace(0, 0.2, 10)
     Epsilon = [0.1]
-    bounds_main_finer(X_test, Y_test,  Epsilon, FLAGS)
-    
-    
-
-    
+    if (FLAGS.reg_type == 'third_order'):
+        bounds_main_third(X_test, Y_test,  Epsilon, FLAGS)
+    else:
+        # Works for both Aditi's first_order and our second_order bound
+        bounds_main_finer(X_test, Y_test,  Epsilon, FLAGS)
 
 if __name__ == '__main__':
     tf.app.run()
