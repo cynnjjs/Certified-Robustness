@@ -1,0 +1,15 @@
+How to run code-bounds:
+
+1. Aditi’s first-order bound:
+
+export PYTHONPATH=./code-bounds/; python -u ./code-bounds/scripts/run_bounds.py --num_classes 10 --loss "cross-entropy" --reg_type “first_order" --msave train-pgdBeta5/pgdBeta5 --results_dir pgdBeta5_bound
+
+2. Our second-order bound:
+
+export PYTHONPATH=./code-bounds/; python -u ./code-bounds/scripts/run_bounds.py --num_classes 10 --loss "cross-entropy" --reg_type "second_order" --solver_type "feasibility" --msave train-pgdBeta5/pgdBeta5 --results_dir pgdBeta5_bound
+
+To solve each SDP to optimum, use flag --solver_type “optimum” instead of "feasibility"
+
+3. Look at the relative magnitude of L(x+eps), L(x), first-order, second-order, residual terms:
+
+export PYTHONPATH=./code-bounds/; python -u ./code-bounds/scripts/run_bounds.py --num_classes 10 --loss "cross-entropy" --reg_type “third_order" --msave train-pgdBeta5/pgdBeta5 --results_dir pgdBeta5_bound
